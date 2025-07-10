@@ -361,15 +361,29 @@ app.get('/api/order/:orderId', async (req, res) => {
 
 // Helper to get items for an order
 const getOrderItems = async (orderId) => {
-    const itemsFromDb = await db.all('SELECT * FROM order_items WHERE orderId = ?', orderId);
+    const itemsFromDb = await db.all(`
+        SELECT oi.*, u.fullName as sellerName, u.email as sellerEmail
+        FROM order_items oi
+        LEFT JOIN users u ON u.id = oi.sellerId
+        WHERE oi.orderId = ?
+    `, orderId);
     return itemsFromDb.map(item => ({
         quantity: item.quantity,
         product: {
             id: item.productId,
             name: item.name,
             price: item.price,
-            imageUrls: [item.imageUrl], // Return as array to match Product type
-            description: '', sellerId: '', category: '', condition: 'New', createdAt: 0,
+            imageUrls: [item.imageUrl],
+            sellerId: item.sellerId,
+            sellerName: item.sellerName || item.sellerEmail,
+            description: '',
+            category: '',
+            condition: 'New',
+            createdAt: 0,
+            listingType: 'Fixed Price',
+            startingPrice: 0,
+            currentBid: 0,
+            auctionEndDate: null,
         }
     }));
 };
@@ -387,10 +401,9 @@ const createOrder = async (orderData) => {
             orderId, userId, total, date, paymentMethod, status
         );
 
-        const stmt = await db.prepare('INSERT INTO order_items (orderId, productId, quantity, price, name, imageUrl) VALUES (?, ?, ?, ?, ?, ?)');
+        const stmt = await db.prepare('INSERT INTO order_items (orderId, productId, sellerId, quantity, price, name, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?)');
         for (const item of cart) {
-            // Save the primary image URL for the order item
-            await stmt.run(orderId, item.product.id, item.quantity, item.product.price, item.product.name, item.product.imageUrls[0]);
+            await stmt.run(orderId, item.product.id, item.product.sellerId, item.quantity, item.product.price, item.product.name, item.product.imageUrls[0]);
         }
         await stmt.finalize();
 

@@ -10,6 +10,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dbPath = path.join(__dirname, 'database.db');
 
+const MOCK_USERS = [
+    { id: 'seller1', email: 'seller1@kardz.com', fullName: 'Collector Corner' },
+    { id: 'seller2', email: 'seller2@kardz.com', fullName: 'Sealed and Dealed' },
+    { id: 'seller3', email: 'seller3@kardz.com', fullName: 'Vintage Finds' },
+];
+
 const MOCK_PRODUCTS = [
   { id: '1', name: 'Holo Charizard Card', description: 'Rare holographic Charizard card from the base set. Graded PSA 9.', price: 1200, imageUrls: ['https://picsum.photos/seed/charizard/600/400'], sellerId: 'seller1', category: 'Single Cards', condition: 'Used - Like New', createdAt: Date.now() - 100000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
   { id: '2', name: 'First Edition Booster Box', description: 'Factory sealed booster box from the very first print run. A true collector\'s item.', price: 25000, imageUrls: ['https://picsum.photos/seed/boosterbox/600/400', 'https://picsum.photos/seed/boosterbox2/600/400'], sellerId: 'seller2', category: 'Closed Products', condition: 'New', createdAt: Date.now() - 200000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
@@ -74,12 +80,14 @@ const setupDatabase = async (db) => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             orderId TEXT NOT NULL,
             productId TEXT NOT NULL,
+            sellerId TEXT NOT NULL,
             quantity INTEGER NOT NULL,
             price REAL NOT NULL,
             name TEXT NOT NULL,
             imageUrl TEXT,
             FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE,
-            FOREIGN KEY(productId) REFERENCES products(id)
+            FOREIGN KEY(productId) REFERENCES products(id),
+            FOREIGN KEY(sellerId) REFERENCES users(id)
         );
 
         CREATE TABLE bids (
@@ -96,6 +104,13 @@ const setupDatabase = async (db) => {
     console.log('Schema created.');
 
     // Seed initial data
+    const userStmt = await db.prepare('INSERT INTO users (id, email, role, fullName) VALUES (?, ?, ?, ?)');
+    for (const user of MOCK_USERS) {
+        await userStmt.run(user.id, user.email, 'user', user.fullName);
+    }
+    await userStmt.finalize();
+    console.log('Seeded mock users');
+
     const categories = [
         { id: 'cat1', name: 'Collection', imageUrl: 'https://picsum.photos/seed/collection/400/400' },
         { id: 'cat2', name: 'Single Cards', imageUrl: 'https://picsum.photos/seed/singlecard/400/400' },
