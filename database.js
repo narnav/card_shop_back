@@ -11,14 +11,14 @@ const __dirname = path.dirname(__filename);
 const dbPath = path.join(__dirname, 'database.db');
 
 const MOCK_PRODUCTS = [
-  { id: '1', name: 'High-Performance Laptop', description: 'A powerful laptop for all your needs.', price: 1200, imageUrls: ['https://picsum.photos/seed/laptop1/600/400', 'https://picsum.photos/seed/laptop2/600/400', 'https://picsum.photos/seed/laptop3/600/400'], sellerId: 'seller1', category: 'Electronics', condition: 'New', createdAt: Date.now() - 100000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '2', name: 'Stylish Running Shoes', description: 'Comfortable and stylish shoes for your daily run.', price: 150, imageUrls: ['https://picsum.photos/seed/shoes1/600/400'], sellerId: 'seller2', category: 'Fashion', condition: 'New', createdAt: Date.now() - 200000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '3', name: 'Modern Bookshelf', description: 'A sleek bookshelf to organize your collection.', price: 250, imageUrls: ['https://picsum.photos/seed/bookshelf1/600/400', 'https://picsum.photos/seed/bookshelf2/600/400'], sellerId: 'seller1', category: 'Home & Garden', condition: 'Used - Like New', createdAt: Date.now() - 300000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '4', name: 'Professional Tennis Racket', description: 'Dominate the court with this professional-grade racket.', price: 220, imageUrls: ['https://picsum.photos/seed/racket1/600/400'], sellerId: 'seller3', category: 'Sports & Outdoors', condition: 'Used - Like New', createdAt: Date.now() - 400000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '5', name: 'The Great Gatsby', description: 'A classic novel by F. Scott Fitzgerald.', price: 15, imageUrls: ['https://picsum.photos/seed/book1/600/400'], sellerId: 'seller2', category: 'Books', condition: 'New', createdAt: Date.now() - 500000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '6', name: 'Smart VR Headset', description: 'Immerse yourself in virtual reality with this next-gen headset.', price: 0, imageUrls: ['https://picsum.photos/seed/vr1/600/400', 'https://picsum.photos/seed/vr2/600/400', 'https://picsum.photos/seed/vr3/600/400'], sellerId: 'seller1', category: 'Electronics', condition: 'Refurbished', createdAt: Date.now() - 600000, listingType: 'Auction', startingPrice: 300, currentBid: 300, auctionEndDate: Date.now() + (3 * 24 * 60 * 60 * 1000) }, // 3 day auction
-  { id: '7', name: 'Designer Leather Jacket', description: 'A timeless leather jacket for a cool look.', price: 750, imageUrls: ['https://picsum.photos/seed/jacket1/600/400'], sellerId: 'seller3', category: 'Fashion', condition: 'New', createdAt: Date.now() - 700000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '8', name: 'Ergonomic Office Chair', description: 'Stay comfortable during long work hours.', price: 350, imageUrls: ['https://picsum.photos/seed/chair1/600/400', 'https://picsum.photos/seed/chair2/600/400'], sellerId: 'seller2', category: 'Home & Garden', condition: 'Used - Like New', createdAt: Date.now() - 800000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
+  { id: '1', name: 'Holo Charizard Card', description: 'Rare holographic Charizard card from the base set. Graded PSA 9.', price: 1200, imageUrls: ['https://picsum.photos/seed/charizard/600/400'], sellerId: 'seller1', category: 'Single Cards', condition: 'Used - Like New', createdAt: Date.now() - 100000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
+  { id: '2', name: 'First Edition Booster Box', description: 'Factory sealed booster box from the very first print run. A true collector\'s item.', price: 25000, imageUrls: ['https://picsum.photos/seed/boosterbox/600/400', 'https://picsum.photos/seed/boosterbox2/600/400'], sellerId: 'seller2', category: 'Closed Products', condition: 'New', createdAt: Date.now() - 200000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
+  { id: '3', name: 'Premium Card Sleeves (100-pack)', description: 'Protect your valuable cards with these durable, acid-free sleeves.', price: 15, imageUrls: ['https://picsum.photos/seed/sleeves1/600/400'], sellerId: 'seller1', category: 'Included Accessories', condition: 'New', createdAt: Date.now() - 300000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
+  { id: '4', name: 'Vintage 1999 Full Card Set', description: 'Complete collection of all 151 original cards. All in near-mint condition.', price: 0, imageUrls: ['https://picsum.photos/seed/fullset/600/400', 'https://picsum.photos/seed/fullset2/600/400', 'https://picsum.photos/seed/fullset3/600/400'], sellerId: 'seller3', category: 'Collection', condition: 'Used - Like New', createdAt: Date.now() - 400000, listingType: 'Auction', startingPrice: 3000, currentBid: 3000, auctionEndDate: Date.now() + (5 * 24 * 60 * 60 * 1000) }, // 5 day auction
+  { id: '5', name: 'Latest Expansion Booster Pack', description: 'A single booster pack from the newest expansion set. Contains 10 cards.', price: 5, imageUrls: ['https://picsum.photos/seed/boosterpack/600/400'], sellerId: 'seller2', category: 'Booster Boxes/Single Boosters', condition: 'New', createdAt: Date.now() - 500000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
+  { id: '6', name: 'Sealed Booster Box Case', description: 'A full, factory-sealed case containing 6 booster boxes of the latest set.', price: 650, imageUrls: ['https://picsum.photos/seed/case/600/400'], sellerId: 'seller1', category: 'Cases', condition: 'New', createdAt: Date.now() - 600000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
+  { id: '7', name: 'Mint Condition Pikachu Card', description: 'Iconic Pikachu card, perfect for any collection. Ungraded.', price: 50, imageUrls: ['https://picsum.photos/seed/pikachu/600/400'], sellerId: 'seller3', category: 'Single Cards', condition: 'New', createdAt: Date.now() - 700000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
+  { id: '8', name: 'Hard Shell Card Case', description: 'A durable, magnetic hard case for protecting your most valuable single cards.', price: 25, imageUrls: ['https://picsum.photos/seed/hardcase/600/400'], sellerId: 'seller2', category: 'Included Accessories', condition: 'New', createdAt: Date.now() - 800000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
 ];
 
 const setupDatabase = async (db) => {
@@ -97,12 +97,12 @@ const setupDatabase = async (db) => {
 
     // Seed initial data
     const categories = [
-        { id: 'cat1', name: 'Electronics', imageUrl: 'https://picsum.photos/seed/electronics/400/400' },
-        { id: 'cat2', name: 'Fashion', imageUrl: 'https://picsum.photos/seed/fashion/400/400' },
-        { id: 'cat3', name: 'Home & Garden', imageUrl: 'https://picsum.photos/seed/home/400/400' },
-        { id: 'cat4', name: 'Sports & Outdoors', imageUrl: 'https://picsum.photos/seed/sports/400/400' },
-        { id: 'cat5', name: 'Books', imageUrl: 'https://picsum.photos/seed/books/400/400' },
-        { id: 'cat6', name: 'Toys & Games', imageUrl: 'https://picsum.photos/seed/toys/400/400' },
+        { id: 'cat1', name: 'Collection', imageUrl: 'https://picsum.photos/seed/collection/400/400' },
+        { id: 'cat2', name: 'Single Cards', imageUrl: 'https://picsum.photos/seed/singlecard/400/400' },
+        { id: 'cat3', name: 'Included Accessories', imageUrl: 'https://picsum.photos/seed/accessories/400/400' },
+        { id: 'cat4', name: 'Closed Products', imageUrl: 'https://picsum.photos/seed/closedprod/400/400' },
+        { id: 'cat5', name: 'Booster Boxes/Single Boosters', imageUrl: 'https://picsum.photos/seed/boosters/400/400' },
+        { id: 'cat6', name: 'Cases', imageUrl: 'https://picsum.photos/seed/cases/400/400' },
     ];
     let stmt = await db.prepare('INSERT INTO categories (id, name, imageUrl) VALUES (?, ?, ?)');
     for (const cat of categories) {
