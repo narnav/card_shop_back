@@ -51,7 +51,12 @@ const setupDatabase = async (db) => {
         CREATE TABLE users (
             id TEXT PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
-            role TEXT NOT NULL DEFAULT 'user'
+            role TEXT NOT NULL DEFAULT 'user',
+            fullName TEXT,
+            address TEXT,
+            telephone TEXT,
+            imageUrl TEXT,
+            bitQrUrl TEXT
         );
 
         CREATE TABLE orders (
@@ -123,11 +128,22 @@ async function initializeDatabase() {
     await db.exec('PRAGMA foreign_keys = ON;');
     console.log('Connected to the SQLite database.');
 
-    // Check if the main 'products' table exists. If not, run the initial setup.
-    const tableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='products'");
+    // Check if the last table to be created ('bids') exists.
+    // This is more robust than checking for just the first table. If it's missing,
+    // we assume the database is in an incomplete state and rebuild it.
+    const tableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='bids'");
 
     if (!tableExists) {
-        console.log('Database not initialized. Creating schema and seeding data...');
+        console.log('Database not fully initialized. Wiping and re-creating schema and data...');
+        
+        // Drop tables in reverse order of creation to respect foreign keys, just in case of partial state
+        await db.exec('DROP TABLE IF EXISTS bids');
+        await db.exec('DROP TABLE IF EXISTS order_items');
+        await db.exec('DROP TABLE IF EXISTS orders');
+        await db.exec('DROP TABLE IF EXISTS users');
+        await db.exec('DROP TABLE IF EXISTS products');
+        await db.exec('DROP TABLE IF EXISTS categories');
+
         try {
             await db.exec('BEGIN TRANSACTION');
             await setupDatabase(db);

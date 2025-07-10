@@ -30,7 +30,15 @@ const processDbProduct = (product) => {
 };
 
 
-// --- Middleware for Admin Check ---
+// --- Middleware for Auth Checks ---
+const isAuthenticated = async (req, res, next) => {
+    const { user } = req.body;
+    if (!user || !user.id) {
+        return res.status(401).json({ message: 'Authentication required.' });
+    }
+    next();
+};
+
 const isAdmin = async (req, res, next) => {
     const { user } = req.body;
     if (!user || !user.id) {
@@ -115,7 +123,7 @@ app.post('/api/login', async (req, res) => {
         if (isNewUser) {
             const newUserId = `user_${Date.now()}`;
             await db.run('INSERT INTO users (id, email, role) VALUES (?, ?, ?)', newUserId, email, role);
-            user = { id: newUserId, email, role };
+            user = await db.get('SELECT * FROM users WHERE id = ?', newUserId);
         } else if (user.role !== role) {
             await db.run('UPDATE users SET role = ? WHERE id = ?', role, user.id);
             user.role = role;
@@ -126,6 +134,21 @@ app.post('/api/login', async (req, res) => {
         res.json(user);
     } catch (err) {
         res.status(500).json({ message: 'Server error during login', error: err.message });
+    }
+});
+
+// PUT Update User Profile
+app.put('/api/user/profile', isAuthenticated, async (req, res) => {
+    const { fullName, address, telephone, imageUrl, bitQrUrl, user } = req.body;
+    try {
+        await db.run(
+            'UPDATE users SET fullName = ?, address = ?, telephone = ?, imageUrl = ?, bitQrUrl = ? WHERE id = ?',
+            fullName, address, telephone, imageUrl, bitQrUrl, user.id
+        );
+        const updatedUser = await db.get('SELECT * FROM users WHERE id = ?', user.id);
+        res.json(updatedUser);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update profile', error: err.message });
     }
 });
 
