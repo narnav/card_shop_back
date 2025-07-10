@@ -7,11 +7,11 @@ import { initializeDatabase } from './database.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const ADMIN_EMAIL = 'admin@shopsphere.com';
+const ADMIN_EMAIL = 'admin@kardz.com';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Increase payload size limit for base64 images
 
 let db;
 
@@ -231,12 +231,13 @@ app.post('/api/products/:productId/bid', async (req, res) => {
 
 // POST Add Category (Admin Only)
 app.post('/api/categories', isAdmin, async (req, res) => {
-    const { name } = req.body;
+    const { name, imageUrl } = req.body;
     if (!name) return res.status(400).json({ message: 'Name is required.' });
     const id = `cat_${Date.now()}`;
     try {
-        await db.run('INSERT INTO categories (id, name) VALUES (?, ?)', id, name);
-        res.status(201).json({ id, name });
+        await db.run('INSERT INTO categories (id, name, imageUrl) VALUES (?, ?, ?)', id, name, imageUrl);
+        const newCategory = await db.get('SELECT * FROM categories WHERE id = ?', id);
+        res.status(201).json(newCategory);
     } catch (err) {
         if (err.code === 'SQLITE_CONSTRAINT') {
             return res.status(409).json({ message: `Category "${name}" already exists.` });
@@ -248,7 +249,7 @@ app.post('/api/categories', isAdmin, async (req, res) => {
 // PUT Update Category (Admin Only)
 app.put('/api/categories/:id', isAdmin, async (req, res) => {
     const { id } = req.params;
-    const { newName } = req.body;
+    const { newName, imageUrl } = req.body;
     if (!newName) return res.status(400).json({ message: 'New name is required.' });
 
     try {
@@ -258,7 +259,7 @@ app.put('/api/categories/:id', isAdmin, async (req, res) => {
         }
 
         await db.exec('BEGIN TRANSACTION');
-        await db.run('UPDATE categories SET name = ? WHERE id = ?', newName, id);
+        await db.run('UPDATE categories SET name = ?, imageUrl = ? WHERE id = ?', newName, imageUrl, id);
         await db.run('UPDATE products SET category = ? WHERE category = ?', newName, oldCategory.name);
         await db.exec('COMMIT');
 

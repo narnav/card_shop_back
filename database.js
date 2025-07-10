@@ -27,7 +27,8 @@ const setupDatabase = async (db) => {
 
         CREATE TABLE categories (
             id TEXT PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE
+            name TEXT NOT NULL UNIQUE,
+            imageUrl TEXT
         );
 
         CREATE TABLE products (
@@ -96,16 +97,16 @@ const setupDatabase = async (db) => {
 
     // Seed initial data
     const categories = [
-        { id: 'cat1', name: 'Electronics' },
-        { id: 'cat2', name: 'Fashion' },
-        { id: 'cat3', name: 'Home & Garden' },
-        { id: 'cat4', name: 'Sports & Outdoors' },
-        { id: 'cat5', name: 'Books' },
-        { id: 'cat6', name: 'Toys & Games' },
+        { id: 'cat1', name: 'Electronics', imageUrl: 'https://picsum.photos/seed/electronics/400/400' },
+        { id: 'cat2', name: 'Fashion', imageUrl: 'https://picsum.photos/seed/fashion/400/400' },
+        { id: 'cat3', name: 'Home & Garden', imageUrl: 'https://picsum.photos/seed/home/400/400' },
+        { id: 'cat4', name: 'Sports & Outdoors', imageUrl: 'https://picsum.photos/seed/sports/400/400' },
+        { id: 'cat5', name: 'Books', imageUrl: 'https://picsum.photos/seed/books/400/400' },
+        { id: 'cat6', name: 'Toys & Games', imageUrl: 'https://picsum.photos/seed/toys/400/400' },
     ];
-    let stmt = await db.prepare('INSERT INTO categories (id, name) VALUES (?, ?)');
+    let stmt = await db.prepare('INSERT INTO categories (id, name, imageUrl) VALUES (?, ?, ?)');
     for (const cat of categories) {
-        await stmt.run(cat.id, cat.name);
+        await stmt.run(cat.id, cat.name, cat.imageUrl);
     }
     await stmt.finalize();
     console.log('Seeded categories');
