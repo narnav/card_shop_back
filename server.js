@@ -4,6 +4,8 @@
 import express from 'express';
 import cors from 'cors';
 import { initializeDatabase } from './database.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const ADMIN_EMAIL = 'admin@shopsphere.com';
 
@@ -12,6 +14,10 @@ app.use(cors());
 app.use(express.json());
 
 let db;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dbPath = path.join(__dirname, 'database.db');
 
 // --- Helper function to process product from DB ---
 const processDbProduct = (product) => {
@@ -56,6 +62,14 @@ app.use((req, res, next) => {
 const PORT = process.env.PORT || 3001;
 
 // --- API ENDPOINTS ---
+
+// GET Server Health Check
+app.get('/api/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString()
+    });
+});
 
 // GET Initial App Data
 app.get('/api/data', async (req, res) => {
@@ -255,6 +269,25 @@ app.delete('/api/categories/:id', isAdmin, async (req, res) => {
         res.status(200).json({ message: 'Category deleted successfully' });
     } catch (err) {
         res.status(500).json({ message: 'Failed to delete category', error: err.message });
+    }
+});
+
+// POST Download Database Backup (Admin Only)
+app.post('/api/database/backup', isAdmin, (req, res) => {
+    try {
+        res.download(dbPath, 'database-backup.db', (err) => {
+            if (err) {
+                console.error("Error sending database backup:", err);
+                if (!res.headersSent) {
+                    res.status(500).send({ message: "Could not download the file." });
+                }
+            }
+        });
+    } catch (err) {
+        console.error("Error preparing database backup:", err);
+        if (!res.headersSent) {
+            res.status(500).json({ message: 'Failed to prepare database backup', error: err.message });
+        }
     }
 });
 
