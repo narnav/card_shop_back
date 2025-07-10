@@ -36,6 +36,10 @@ const isAuthenticated = async (req, res, next) => {
     if (!user || !user.id) {
         return res.status(401).json({ message: 'Authentication required.' });
     }
+    const dbUser = await db.get('SELECT id FROM users WHERE id = ?', user.id);
+    if (!dbUser) {
+        return res.status(401).json({ message: 'User not found.'});
+    }
     next();
 };
 
@@ -153,7 +157,7 @@ app.put('/api/user/profile', isAuthenticated, async (req, res) => {
 });
 
 // POST Add Product
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', isAuthenticated, async (req, res) => {
     const { listingType, name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, sellerId } = req.body;
     try {
         const id = `prod_${Date.now()}`;
@@ -175,11 +179,10 @@ app.post('/api/products', async (req, res) => {
 });
 
 // POST Place Bid
-app.post('/api/products/:productId/bid', async (req, res) => {
+app.post('/api/products/:productId/bid', isAuthenticated, async (req, res) => {
     const { productId } = req.params;
     const { amount, user } = req.body;
 
-    if (!user) return res.status(401).json({ message: 'You must be logged in to bid.' });
     if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: 'Invalid bid amount.' });
 
     try {
@@ -338,6 +341,18 @@ app.get('/api/order/:orderId', async (req, res) => {
             return res.status(404).json({ message: 'Order not found' });
         }
         order.items = await getOrderItems(order.id);
+        
+        if (order.items && order.items.length > 0) {
+            const firstProductId = order.items[0].product.id;
+            const product = await db.get('SELECT sellerId FROM products WHERE id = ?', firstProductId);
+            if (product && product.sellerId) {
+                const sellerInfo = await db.get('SELECT telephone, bitQrUrl FROM users WHERE id = ?', product.sellerId);
+                if (sellerInfo) {
+                    order.sellerInfo = sellerInfo;
+                }
+            }
+        }
+        
         res.json(order);
     } catch (err) {
         res.status(500).json({ message: 'Failed to fetch order', error: err.message });
@@ -391,7 +406,7 @@ const createOrder = async (orderData) => {
 };
 
 // POST Checkout (Card)
-app.post('/api/checkout', async (req, res) => {
+app.post('/api/checkout', isAuthenticated, async (req, res) => {
     try {
         const newOrder = await createOrder({ ...req.body, paymentMethod: 'Card', status: 'Completed' });
         res.status(201).json(newOrder);
@@ -401,7 +416,7 @@ app.post('/api/checkout', async (req, res) => {
 });
 
 // POST Bit Checkout
-app.post('/api/bit-checkout', async (req, res) => {
+app.post('/api/bit-checkout', isAuthenticated, async (req, res) => {
     try {
         const newOrder = await createOrder({
             ...req.body,
@@ -419,8 +434,13 @@ const confirmPendingPayments = async () => {
     try {
         const pendingOrders = await db.all("SELECT id FROM orders WHERE status = 'Pending Payment' AND paymentMethod = 'Bit'");
         for (const order of pendingOrders) {
-            console.log(`Confirming payment for pending Bit order ${order.id}...`);
-            await db.run("UPDATE orders SET status = 'Completed' WHERE id = ?", order.id);
+            // Randomly confirm payment to simulate reality
+            if (Math.random() > 0.3) { 
+                console.log(`Confirming payment for pending Bit order ${order.id}...`);
+                await db.run("UPDATE orders SET status = 'Completed' WHERE id = ?", order.id);
+            } else {
+                console.log(`Payment for order ${order.id} still pending...`);
+            }
         }
     } catch (err) {
         console.error("Error confirming pending payments:", err);
@@ -433,7 +453,7 @@ async function startServer() {
         app.listen(PORT, () => {
             console.log(`Server running on http://localhost:${PORT}`);
             // Simulate payment confirmation for any pending orders after a delay
-            setTimeout(confirmPendingPayments, 15000); // Check after 15 seconds
+            setInterval(confirmPendingPayments, 15000); // Check every 15 seconds
         });
     } catch (error) {
         console.error('Failed to start server:', error);
