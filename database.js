@@ -17,14 +17,15 @@ const MOCK_USERS = [
 ];
 
 const MOCK_PRODUCTS = [
-  { id: '1', name: 'Holo Charizard Card', description: 'Rare holographic Charizard card from the base set. Graded PSA 9.', price: 1200, imageUrls: ['https://picsum.photos/seed/charizard/600/400'], sellerId: 'seller1', category: 'Single Cards', condition: 'Used - Like New', createdAt: Date.now() - 100000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '2', name: 'First Edition Booster Box', description: 'Factory sealed booster box from the very first print run. A true collector\'s item.', price: 25000, imageUrls: ['https://picsum.photos/seed/boosterbox/600/400', 'https://picsum.photos/seed/boosterbox2/600/400'], sellerId: 'seller2', category: 'Closed Products', condition: 'New', createdAt: Date.now() - 200000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '3', name: 'Premium Card Sleeves (100-pack)', description: 'Protect your valuable cards with these durable, acid-free sleeves.', price: 15, imageUrls: ['https://picsum.photos/seed/sleeves1/600/400'], sellerId: 'seller1', category: 'Included Accessories', condition: 'New', createdAt: Date.now() - 300000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '4', name: 'Vintage 1999 Full Card Set', description: 'Complete collection of all 151 original cards. All in near-mint condition.', price: 0, imageUrls: ['https://picsum.photos/seed/fullset/600/400', 'https://picsum.photos/seed/fullset2/600/400', 'https://picsum.photos/seed/fullset3/600/400'], sellerId: 'seller3', category: 'Collection', condition: 'Used - Like New', createdAt: Date.now() - 400000, listingType: 'Auction', startingPrice: 3000, currentBid: 3000, auctionEndDate: Date.now() + (5 * 24 * 60 * 60 * 1000) }, // 5 day auction
-  { id: '5', name: 'Latest Expansion Booster Pack', description: 'A single booster pack from the newest expansion set. Contains 10 cards.', price: 5, imageUrls: ['https://picsum.photos/seed/boosterpack/600/400'], sellerId: 'seller2', category: 'Booster Boxes/Single Boosters', condition: 'New', createdAt: Date.now() - 500000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '6', name: 'Sealed Booster Box Case', description: 'A full, factory-sealed case containing 6 booster boxes of the latest set.', price: 650, imageUrls: ['https://picsum.photos/seed/case/600/400'], sellerId: 'seller1', category: 'Cases', condition: 'New', createdAt: Date.now() - 600000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '7', name: 'Mint Condition Pikachu Card', description: 'Iconic Pikachu card, perfect for any collection. Ungraded.', price: 50, imageUrls: ['https://picsum.photos/seed/pikachu/600/400'], sellerId: 'seller3', category: 'Single Cards', condition: 'New', createdAt: Date.now() - 700000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
-  { id: '8', name: 'Hard Shell Card Case', description: 'A durable, magnetic hard case for protecting your most valuable single cards.', price: 25, imageUrls: ['https://picsum.photos/seed/hardcase/600/400'], sellerId: 'seller2', category: 'Included Accessories', condition: 'New', createdAt: Date.now() - 800000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null },
+  { id: '1', name: 'Holo Charizard Card', description: 'Rare holographic Charizard card from the base set. Graded PSA 9.', price: 1200, imageUrls: ['https://picsum.photos/seed/charizard/600/400'], sellerId: 'seller1', category: 'Single Cards', condition: 'Used - Like New', createdAt: Date.now() - 100000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
+  { id: '2', name: 'First Edition Booster Box', description: 'Factory sealed booster box from the very first print run. A true collector\'s item.', price: 25000, imageUrls: ['https://picsum.photos/seed/boosterbox/600/400', 'https://picsum.photos/seed/boosterbox2/600/400'], sellerId: 'seller2', category: 'Closed Products', condition: 'New', createdAt: Date.now() - 200000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
+  { id: '3', name: 'Premium Card Sleeves (100-pack)', description: 'Protect your valuable cards with these durable, acid-free sleeves.', price: 15, imageUrls: ['https://picsum.photos/seed/sleeves1/600/400'], sellerId: 'seller1', category: 'Included Accessories', condition: 'New', createdAt: Date.now() - 300000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
+  { id: '4', name: 'Vintage 1999 Full Card Set', description: 'Complete collection of all 151 original cards. All in near-mint condition.', price: 0, imageUrls: ['https://picsum.photos/seed/fullset/600/400', 'https://picsum.photos/seed/fullset2/600/400', 'https://picsum.photos/seed/fullset3/600/400'], sellerId: 'seller3', category: 'Collection', condition: 'Used - Like New', createdAt: Date.now() - 400000, listingType: 'Auction', startingPrice: 3000, currentBid: 3000, auctionEndDate: Date.now() + (5 * 24 * 60 * 60 * 1000), isHidden: 0 }, // 5 day auction
+  { id: '5', name: 'Latest Expansion Booster Pack', description: 'A single booster pack from the newest expansion set. Contains 10 cards.', price: 5, imageUrls: ['https://picsum.photos/seed/boosterpack/600/400'], sellerId: 'seller2', category: 'Booster Boxes/Single Boosters', condition: 'New', createdAt: Date.now() - 500000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
+  { id: '6', name: 'Sealed Booster Box Case', description: 'A full, factory-sealed case containing 6 booster boxes of the latest set.', price: 650, imageUrls: ['https://picsum.photos/seed/case/600/400'], sellerId: 'seller1', category: 'Cases', condition: 'New', createdAt: Date.now() - 600000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
+  { id: '7', name: 'Mint Condition Pikachu Card', description: 'Iconic Pikachu card, perfect for any collection. Ungraded.', price: 50, imageUrls: ['https://picsum.photos/seed/pikachu/600/400'], sellerId: 'seller3', category: 'Single Cards', condition: 'New', createdAt: Date.now() - 700000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
+  { id: '8', name: 'Hard Shell Card Case', description: 'A durable, magnetic hard case for protecting your most valuable single cards.', price: 25, imageUrls: ['https://picsum.photos/seed/hardcase/600/400'], sellerId: 'seller2', category: 'Included Accessories', condition: 'New', createdAt: Date.now() - 800000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
+  { id: '9', name: 'Hidden Test Product', description: 'This product should not be visible to regular users.', price: 99, imageUrls: ['https://picsum.photos/seed/hidden/600/400'], sellerId: 'seller1', category: 'Single Cards', condition: 'New', createdAt: Date.now() - 900000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 1 },
 ];
 
 const setupDatabase = async (db) => {
@@ -52,7 +53,8 @@ const setupDatabase = async (db) => {
             listingType TEXT NOT NULL DEFAULT 'Fixed Price',
             startingPrice REAL,
             currentBid REAL,
-            auctionEndDate INTEGER
+            auctionEndDate INTEGER,
+            isHidden INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE users (
@@ -126,10 +128,10 @@ const setupDatabase = async (db) => {
     await stmt.finalize();
     console.log('Seeded categories');
     
-    stmt = await db.prepare('INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, sellerId, category, condition, createdAt, listingType, startingPrice, currentBid, auctionEndDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    stmt = await db.prepare('INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, sellerId, category, condition, createdAt, listingType, startingPrice, currentBid, auctionEndDate, isHidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     for (const p of MOCK_PRODUCTS) {
         const [img1, img2, img3] = p.imageUrls;
-        await stmt.run(p.id, p.name, p.description, p.price, img1 || null, img2 || null, img3 || null, p.sellerId, p.category, p.condition, p.createdAt, p.listingType, p.startingPrice, p.currentBid, p.auctionEndDate);
+        await stmt.run(p.id, p.name, p.description, p.price, img1 || null, img2 || null, img3 || null, p.sellerId, p.category, p.condition, p.createdAt, p.listingType, p.startingPrice, p.currentBid, p.auctionEndDate, p.isHidden);
     }
     await stmt.finalize();
     console.log('Seeded products');

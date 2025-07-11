@@ -25,7 +25,8 @@ const processDbProduct = (product) => {
     const { imageUrl1, imageUrl2, imageUrl3, ...rest } = product;
     return {
         ...rest,
-        imageUrls: [imageUrl1, imageUrl2, imageUrl3].filter(Boolean) // Filter out null/empty URLs
+        imageUrls: [imageUrl1, imageUrl2, imageUrl3].filter(Boolean), // Filter out null/empty URLs
+        isHidden: product.isHidden === 1
     };
 };
 
@@ -86,7 +87,7 @@ app.get('/api/health', (req, res) => {
 // GET Initial App Data
 app.get('/api/data', async (req, res) => {
     try {
-        const productsFromDb = await db.all('SELECT * FROM products ORDER BY createdAt DESC');
+        const productsFromDb = await db.all('SELECT * FROM products WHERE isHidden = 0 ORDER BY createdAt DESC');
         const products = productsFromDb.map(processDbProduct);
         const categories = await db.all('SELECT * FROM categories ORDER BY name ASC');
         res.json({ products, categories });
@@ -167,7 +168,7 @@ app.post('/api/products', isAuthenticated, async (req, res) => {
         const [imageUrl1, imageUrl2, imageUrl3] = imageUrls.map(url => url || null);
 
         await db.run(
-            'INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate, isHidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
             id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate
         );
         const newProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
@@ -177,6 +178,67 @@ app.post('/api/products', isAuthenticated, async (req, res) => {
         res.status(500).json({ message: 'Failed to add product', error: err.message });
     }
 });
+
+// PUT Update Product (Admin only)
+app.put('/api/products/:id', isAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, listingType } = req.body;
+    
+    try {
+        const currentBid = listingType === 'Auction' ? (await db.get('SELECT currentBid FROM products WHERE id = ?', id)).currentBid : null;
+        const [imageUrl1, imageUrl2, imageUrl3] = [...imageUrls, null, null, null];
+
+        await db.run(
+            'UPDATE products SET name = ?, description = ?, price = ?, startingPrice = ?, auctionEndDate = ?, imageUrl1 = ?, imageUrl2 = ?, imageUrl3 = ?, category = ?, condition = ?, listingType = ?, currentBid = ? WHERE id = ?',
+            name, description, price, startingPrice, auctionEndDate, imageUrl1, imageUrl2, imageUrl3, category, condition, listingType, currentBid, id
+        );
+        
+        const updatedProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
+        res.json(processDbProduct(updatedProductFromDb));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update product', error: err.message });
+    }
+});
+
+// DELETE Product (Admin only)
+app.delete('/api/products/:id', isAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await db.run('DELETE FROM products WHERE id = ?', id);
+        if (result.changes === 0) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+        res.status(200).json({ message: 'Product deleted successfully' });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to delete product', error: err.message });
+    }
+});
+
+// PATCH Toggle Product Visibility (Admin only)
+app.patch('/api/products/:id/toggle-visibility', isAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await db.run('UPDATE products SET isHidden = 1 - isHidden WHERE id = ?', id);
+        const updatedProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
+        if (!updatedProductFromDb) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+        res.json(processDbProduct(updatedProductFromDb));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to toggle product visibility', error: err.message });
+    }
+});
+
+// GET all products for Admin
+app.post('/api/admin/products', isAdmin, async (req, res) => {
+    try {
+        const productsFromDb = await db.all('SELECT * FROM products ORDER BY createdAt DESC');
+        res.json(productsFromDb.map(processDbProduct));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch admin products', error: err.message });
+    }
+});
+
 
 // POST Place Bid
 app.post('/api/products/:productId/bid', isAuthenticated, async (req, res) => {
@@ -327,7 +389,7 @@ app.get('/api/orders/:userId', async (req, res) => {
             order.items = await getOrderItems(order.id);
         }
         res.json(orders);
-    } catch (err) {
+    } catch (err) => {
         res.status(500).json({ message: 'Failed to fetch orders', error: err.message });
     }
 });
@@ -384,6 +446,7 @@ const getOrderItems = async (orderId) => {
             startingPrice: 0,
             currentBid: 0,
             auctionEndDate: null,
+            isHidden: false,
         }
     }));
 };
