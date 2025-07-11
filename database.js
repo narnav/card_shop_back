@@ -1,182 +1,580 @@
 // To run this server, you need to install its dependencies:
-// npm install sqlite sqlite3
+// npm install express sqlite sqlite3 cors
 
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import express from 'express';
+import cors from 'cors';
+import { initializeDatabase } from './database.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+const ADMIN_EMAIL = 'admin@kardz.com';
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '10mb' })); // Increase payload size limit for base64 images
+
+let db;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dbPath = path.join(__dirname, 'database.db');
 
-const MOCK_USERS = [
-    { id: 'seller1', email: 'seller1@kardz.com', fullName: 'Collector Corner' },
-    { id: 'seller2', email: 'seller2@kardz.com', fullName: 'Sealed and Dealed' },
-    { id: 'seller3', email: 'seller3@kardz.com', fullName: 'Vintage Finds' },
-];
+// --- Helper function to process product from DB ---
+const processDbProduct = (product) => {
+    if (!product) return null;
+    const { imageUrl1, imageUrl2, imageUrl3, ...rest } = product;
+    return {
+        ...rest,
+        imageUrls: [imageUrl1, imageUrl2, imageUrl3].filter(Boolean), // Filter out null/empty URLs
+        isHidden: product.isHidden === 1
+    };
+};
 
-const MOCK_PRODUCTS = [
-  { id: '1', name: 'Holo Charizard Card', description: 'Rare holographic Charizard card from the base set. Graded PSA 9.', price: 1200, imageUrls: ['https://picsum.photos/seed/charizard/600/400'], sellerId: 'seller1', category: 'Single Cards', condition: 'Used - Like New', createdAt: Date.now() - 100000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
-  { id: '2', name: 'First Edition Booster Box', description: 'Factory sealed booster box from the very first print run. A true collector\'s item.', price: 25000, imageUrls: ['https://picsum.photos/seed/boosterbox/600/400', 'https://picsum.photos/seed/boosterbox2/600/400'], sellerId: 'seller2', category: 'Closed Products', condition: 'New', createdAt: Date.now() - 200000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
-  { id: '3', name: 'Premium Card Sleeves (100-pack)', description: 'Protect your valuable cards with these durable, acid-free sleeves.', price: 15, imageUrls: ['https://picsum.photos/seed/sleeves1/600/400'], sellerId: 'seller1', category: 'Included Accessories', condition: 'New', createdAt: Date.now() - 300000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
-  { id: '4', name: 'Vintage 1999 Full Card Set', description: 'Complete collection of all 151 original cards. All in near-mint condition.', price: 0, imageUrls: ['https://picsum.photos/seed/fullset/600/400', 'https://picsum.photos/seed/fullset2/600/400', 'https://picsum.photos/seed/fullset3/600/400'], sellerId: 'seller3', category: 'Collection', condition: 'Used - Like New', createdAt: Date.now() - 400000, listingType: 'Auction', startingPrice: 3000, currentBid: 3000, auctionEndDate: Date.now() + (5 * 24 * 60 * 60 * 1000), isHidden: 0 }, // 5 day auction
-  { id: '5', name: 'Latest Expansion Booster Pack', description: 'A single booster pack from the newest expansion set. Contains 10 cards.', price: 5, imageUrls: ['https://picsum.photos/seed/boosterpack/600/400'], sellerId: 'seller2', category: 'Booster Boxes/Single Boosters', condition: 'New', createdAt: Date.now() - 500000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
-  { id: '6', name: 'Sealed Booster Box Case', description: 'A full, factory-sealed case containing 6 booster boxes of the latest set.', price: 650, imageUrls: ['https://picsum.photos/seed/case/600/400'], sellerId: 'seller1', category: 'Cases', condition: 'New', createdAt: Date.now() - 600000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
-  { id: '7', name: 'Mint Condition Pikachu Card', description: 'Iconic Pikachu card, perfect for any collection. Ungraded.', price: 50, imageUrls: ['https://picsum.photos/seed/pikachu/600/400'], sellerId: 'seller3', category: 'Single Cards', condition: 'New', createdAt: Date.now() - 700000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
-  { id: '8', name: 'Hard Shell Card Case', description: 'A durable, magnetic hard case for protecting your most valuable single cards.', price: 25, imageUrls: ['https://picsum.photos/seed/hardcase/600/400'], sellerId: 'seller2', category: 'Included Accessories', condition: 'New', createdAt: Date.now() - 800000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 0 },
-  { id: '9', name: 'Hidden Test Product', description: 'This product should not be visible to regular users.', price: 99, imageUrls: ['https://picsum.photos/seed/hidden/600/400'], sellerId: 'seller1', category: 'Single Cards', condition: 'New', createdAt: Date.now() - 900000, listingType: 'Fixed Price', startingPrice: null, currentBid: null, auctionEndDate: null, isHidden: 1 },
-];
 
-const setupDatabase = async (db) => {
-    await db.exec(`
-        PRAGMA foreign_keys = ON;
-
-        CREATE TABLE categories (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            imageUrl TEXT
-        );
-
-        CREATE TABLE products (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            description TEXT,
-            price REAL NOT NULL,
-            imageUrl1 TEXT,
-            imageUrl2 TEXT,
-            imageUrl3 TEXT,
-            sellerId TEXT NOT NULL,
-            category TEXT NOT NULL,
-            condition TEXT NOT NULL,
-            createdAt INTEGER NOT NULL,
-            listingType TEXT NOT NULL DEFAULT 'Fixed Price',
-            startingPrice REAL,
-            currentBid REAL,
-            auctionEndDate INTEGER,
-            isHidden INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE users (
-            id TEXT PRIMARY KEY,
-            email TEXT NOT NULL UNIQUE,
-            role TEXT NOT NULL DEFAULT 'user',
-            fullName TEXT,
-            address TEXT,
-            telephone TEXT,
-            imageUrl TEXT,
-            bitQrUrl TEXT
-        );
-
-        CREATE TABLE orders (
-            id TEXT PRIMARY KEY,
-            userId TEXT NOT NULL,
-            total REAL NOT NULL,
-            date INTEGER NOT NULL,
-            paymentMethod TEXT NOT NULL DEFAULT 'Card',
-            status TEXT NOT NULL DEFAULT 'Completed',
-            FOREIGN KEY(userId) REFERENCES users(id)
-        );
-
-        CREATE TABLE order_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            orderId TEXT NOT NULL,
-            productId TEXT NOT NULL,
-            sellerId TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            price REAL NOT NULL,
-            name TEXT NOT NULL,
-            imageUrl TEXT,
-            FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE,
-            FOREIGN KEY(productId) REFERENCES products(id),
-            FOREIGN KEY(sellerId) REFERENCES users(id)
-        );
-
-        CREATE TABLE bids (
-            id TEXT PRIMARY KEY,
-            productId TEXT NOT NULL,
-            userId TEXT NOT NULL,
-            userEmail TEXT NOT NULL,
-            amount REAL NOT NULL,
-            createdAt INTEGER NOT NULL,
-            FOREIGN KEY(productId) REFERENCES products(id) ON DELETE CASCADE,
-            FOREIGN KEY(userId) REFERENCES users(id)
-        );
-    `);
-    console.log('Schema created.');
-
-    // Seed initial data
-    const userStmt = await db.prepare('INSERT INTO users (id, email, role, fullName) VALUES (?, ?, ?, ?)');
-    for (const user of MOCK_USERS) {
-        await userStmt.run(user.id, user.email, 'user', user.fullName);
+// --- Middleware for Auth Checks ---
+const isAuthenticated = async (req, res, next) => {
+    const { user } = req.body;
+    if (!user || !user.id) {
+        return res.status(401).json({ message: 'Authentication required.' });
     }
-    await userStmt.finalize();
-    console.log('Seeded mock users');
-
-    const categories = [
-        { id: 'cat1', name: 'Collection', imageUrl: 'https://picsum.photos/seed/collection/400/400' },
-        { id: 'cat2', name: 'Single Cards', imageUrl: 'https://picsum.photos/seed/singlecard/400/400' },
-        { id: 'cat3', name: 'Included Accessories', imageUrl: 'https://picsum.photos/seed/accessories/400/400' },
-        { id: 'cat4', name: 'Closed Products', imageUrl: 'https://picsum.photos/seed/closedprod/400/400' },
-        { id: 'cat5', name: 'Booster Boxes/Single Boosters', imageUrl: 'https://picsum.photos/seed/boosters/400/400' },
-        { id: 'cat6', name: 'Cases', imageUrl: 'https://picsum.photos/seed/cases/400/400' },
-    ];
-    let stmt = await db.prepare('INSERT INTO categories (id, name, imageUrl) VALUES (?, ?, ?)');
-    for (const cat of categories) {
-        await stmt.run(cat.id, cat.name, cat.imageUrl);
+    const dbUser = await db.get('SELECT id FROM users WHERE id = ?', user.id);
+    if (!dbUser) {
+        return res.status(401).json({ message: 'User not found.'});
     }
-    await stmt.finalize();
-    console.log('Seeded categories');
-    
-    stmt = await db.prepare('INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, sellerId, category, condition, createdAt, listingType, startingPrice, currentBid, auctionEndDate, isHidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    for (const p of MOCK_PRODUCTS) {
-        const [img1, img2, img3] = p.imageUrls;
-        await stmt.run(p.id, p.name, p.description, p.price, img1 || null, img2 || null, img3 || null, p.sellerId, p.category, p.condition, p.createdAt, p.listingType, p.startingPrice, p.currentBid, p.auctionEndDate, p.isHidden);
+    next();
+};
+
+const isAdmin = async (req, res, next) => {
+    const { user } = req.body;
+    if (!user || !user.id) {
+        return res.status(401).json({ message: 'Authentication required.' });
     }
-    await stmt.finalize();
-    console.log('Seeded products');
-}
-
-async function initializeDatabase() {
-    const db = await open({
-        filename: dbPath,
-        driver: sqlite3.Database
-    });
-
-    await db.exec('PRAGMA foreign_keys = ON;');
-    console.log('Connected to the SQLite database.');
-
-    // Check if the last table to be created ('bids') exists.
-    // This is more robust than checking for just the first table. If it's missing,
-    // we assume the database is in an incomplete state and rebuild it.
-    const tableExists = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='bids'");
-
-    if (!tableExists) {
-        console.log('Database not fully initialized. Wiping and re-creating schema and data...');
-        
-        // Drop tables in reverse order of creation to respect foreign keys, just in case of partial state
-        await db.exec('DROP TABLE IF EXISTS bids');
-        await db.exec('DROP TABLE IF EXISTS order_items');
-        await db.exec('DROP TABLE IF EXISTS orders');
-        await db.exec('DROP TABLE IF EXISTS users');
-        await db.exec('DROP TABLE IF EXISTS products');
-        await db.exec('DROP TABLE IF EXISTS categories');
-
-        try {
-            await db.exec('BEGIN TRANSACTION');
-            await setupDatabase(db);
-            await db.exec('COMMIT');
-            console.log('Database successfully initialized.');
-        } catch (err) {
-            await db.exec('ROLLBACK');
-            console.error('Failed to initialize database:', err);
-            throw err; // Propagate the error to stop the server from starting.
+    try {
+        const dbUser = await db.get('SELECT role FROM users WHERE id = ?', user.id);
+        if (dbUser && dbUser.role === 'admin') {
+            next();
+        } else {
+            res.status(403).json({ message: 'Forbidden: Admin access required.' });
         }
-    } else {
-        console.log('Database already initialized.');
+    } catch (err) {
+        res.status(500).json({ message: 'Server error during authorization', error: err.message });
     }
+};
+
+const canManageProduct = async (req, res, next) => {
+    const { user } = req.body;
+    const { id: productId } = req.params;
+
+    if (!user || !user.id) {
+        return res.status(401).json({ message: 'Authentication required.' });
+    }
+    try {
+        const product = await db.get('SELECT sellerId FROM products WHERE id = ?', productId);
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found.' });
+        }
+        
+        const dbUser = await db.get('SELECT role FROM users WHERE id = ?', user.id);
+        if (!dbUser) {
+             return res.status(401).json({ message: 'User not found.' });
+        }
+
+        if (dbUser.role === 'admin' || product.sellerId === user.id) {
+            next();
+        } else {
+            res.status(403).json({ message: 'Forbidden: You do not have permission to manage this product.' });
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Server error during authorization', error: err.message });
+    }
+};
+
+// --- Logger Middleware ---
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] ${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
+  });
+  next();
+});
+
+const PORT = process.env.PORT || 3001;
+
+// --- API ENDPOINTS ---
+
+// GET Server Health Check
+app.get('/api/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// GET Initial App Data
+app.get('/api/data', async (req, res) => {
+    try {
+        const productsFromDb = await db.all('SELECT * FROM products WHERE isHidden = 0 ORDER BY createdAt DESC');
+        const products = productsFromDb.map(processDbProduct);
+        const categories = await db.all('SELECT * FROM categories ORDER BY name ASC');
+        res.json({ products, categories });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch initial data', error: err.message });
+    }
+});
+
+// GET Single Product with Bids
+app.get('/api/product/:productId', async (req, res) => {
+    const { productId } = req.params;
+    try {
+        const productFromDb = await db.get('SELECT * FROM products WHERE id = ?', productId);
+        if (!productFromDb) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+        const product = processDbProduct(productFromDb);
+        if (product.listingType === 'Auction') {
+            product.bids = await db.all('SELECT * FROM bids WHERE productId = ? ORDER BY createdAt DESC', productId);
+        }
+        res.json(product);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch product details', error: err.message });
+    }
+});
+
+// POST Login / Register
+app.post('/api/login', async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+    }
+    try {
+        let user = await db.get('SELECT * FROM users WHERE email = ?', email);
+        const isNewUser = !user;
+        const role = email === ADMIN_EMAIL ? 'admin' : 'user';
+        
+        if (isNewUser) {
+            const newUserId = `user_${Date.now()}`;
+            await db.run('INSERT INTO users (id, email, role) VALUES (?, ?, ?)', newUserId, email, role);
+            user = await db.get('SELECT * FROM users WHERE id = ?', newUserId);
+        } else if (user.role !== role) {
+            await db.run('UPDATE users SET role = ? WHERE id = ?', role, user.id);
+            user.role = role;
+        }
+        
+        console.log(`Login attempt for email: "${email}", Role assigned: "${user.role}"`);
+
+        res.json(user);
+    } catch (err) {
+        res.status(500).json({ message: 'Server error during login', error: err.message });
+    }
+});
+
+// PUT Update User Profile
+app.put('/api/user/profile', isAuthenticated, async (req, res) => {
+    const { fullName, address, telephone, imageUrl, bitQrUrl, user } = req.body;
+    try {
+        await db.run(
+            'UPDATE users SET fullName = ?, address = ?, telephone = ?, imageUrl = ?, bitQrUrl = ? WHERE id = ?',
+            fullName, address, telephone, imageUrl, bitQrUrl, user.id
+        );
+        const updatedUser = await db.get('SELECT * FROM users WHERE id = ?', user.id);
+        res.json(updatedUser);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update profile', error: err.message });
+    }
+});
+
+// POST Add Product
+app.post('/api/products', isAuthenticated, async (req, res) => {
+    const { listingType, name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, sellerId } = req.body;
+    try {
+        const id = `prod_${Date.now()}`;
+        const createdAt = Date.now();
+        const currentBid = listingType === 'Auction' ? startingPrice : null;
+        
+        const [imageUrl1, imageUrl2, imageUrl3] = imageUrls.map(url => url || null);
+
+        await db.run(
+            'INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate, isHidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+            id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate
+        );
+        const newProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
+        const newProduct = processDbProduct(newProductFromDb);
+        res.status(201).json(newProduct);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to add product', error: err.message });
+    }
+});
+
+// PUT Update Product (Admin or Seller)
+app.put('/api/products/:id', canManageProduct, async (req, res) => {
+    const { id } = req.params;
+    const { name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, listingType } = req.body;
     
-    return db;
+    try {
+        const product = await db.get('SELECT currentBid FROM products WHERE id = ?', id);
+        const currentBid = listingType === 'Auction' ? (product.currentBid || startingPrice) : null;
+        const [imageUrl1, imageUrl2, imageUrl3] = [...imageUrls, null, null, null];
+
+        await db.run(
+            'UPDATE products SET name = ?, description = ?, price = ?, startingPrice = ?, auctionEndDate = ?, imageUrl1 = ?, imageUrl2 = ?, imageUrl3 = ?, category = ?, condition = ?, listingType = ?, currentBid = ? WHERE id = ?',
+            name, description, price, startingPrice, auctionEndDate, imageUrl1, imageUrl2, imageUrl3, category, condition, listingType, currentBid, id
+        );
+        
+        const updatedProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
+        res.json(processDbProduct(updatedProductFromDb));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update product', error: err.message });
+    }
+});
+
+// DELETE Product (Admin or Seller)
+app.delete('/api/products/:id', canManageProduct, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await db.run('DELETE FROM products WHERE id = ?', id);
+        if (result.changes === 0) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+        res.status(200).json({ message: 'Product deleted successfully' });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to delete product', error: err.message });
+    }
+});
+
+// PATCH Toggle Product Visibility (Admin or Seller)
+app.patch('/api/products/:id/toggle-visibility', canManageProduct, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await db.run('UPDATE products SET isHidden = 1 - isHidden WHERE id = ?', id);
+        const updatedProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
+        if (!updatedProductFromDb) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+        res.json(processDbProduct(updatedProductFromDb));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to toggle product visibility', error: err.message });
+    }
+});
+
+// GET all products for Admin
+app.post('/api/admin/products', isAdmin, async (req, res) => {
+    try {
+        const productsFromDb = await db.all('SELECT * FROM products ORDER BY createdAt DESC');
+        res.json(productsFromDb.map(processDbProduct));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch admin products', error: err.message });
+    }
+});
+
+// GET all products for a specific seller
+app.post('/api/my-products', isAuthenticated, async (req, res) => {
+    const { user } = req.body;
+    try {
+        const productsFromDb = await db.all('SELECT * FROM products WHERE sellerId = ? ORDER BY createdAt DESC', user.id);
+        res.json(productsFromDb.map(processDbProduct));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch your products', error: err.message });
+    }
+});
+
+
+// POST Place Bid
+app.post('/api/products/:productId/bid', isAuthenticated, async (req, res) => {
+    const { productId } = req.params;
+    const { amount, user } = req.body;
+
+    if (!amount || isNaN(parseFloat(amount))) return res.status(400).json({ message: 'Invalid bid amount.' });
+
+    try {
+        await db.exec('BEGIN TRANSACTION');
+
+        const product = await db.get('SELECT * FROM products WHERE id = ?', productId);
+        if (!product) {
+            await db.exec('ROLLBACK');
+            return res.status(404).json({ message: 'Product not found.' });
+        }
+        if (product.listingType !== 'Auction') {
+            await db.exec('ROLLBACK');
+            return res.status(400).json({ message: 'This item is not an auction.' });
+        }
+        if (product.auctionEndDate && Date.now() > product.auctionEndDate) {
+            await db.exec('ROLLBACK');
+            return res.status(400).json({ message: 'This auction has already ended.' });
+        }
+        if (parseFloat(amount) <= product.currentBid) {
+            await db.exec('ROLLBACK');
+            return res.status(400).json({ message: `Your bid must be higher than the current bid of $${product.currentBid.toFixed(2)}.` });
+        }
+        if (product.sellerId === user.id) {
+            await db.exec('ROLLBACK');
+            return res.status(400).json({ message: "You cannot bid on your own item." });
+        }
+
+        const bidId = `bid_${Date.now()}`;
+        const createdAt = Date.now();
+        await db.run(
+            'INSERT INTO bids (id, productId, userId, userEmail, amount, createdAt) VALUES (?, ?, ?, ?, ?, ?)',
+            bidId, productId, user.id, user.email, amount, createdAt
+        );
+        await db.run('UPDATE products SET currentBid = ? WHERE id = ?', amount, productId);
+
+        await db.exec('COMMIT');
+        
+        const updatedProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', productId);
+        const updatedProduct = processDbProduct(updatedProductFromDb);
+        updatedProduct.bids = await db.all('SELECT * FROM bids WHERE productId = ? ORDER BY createdAt DESC', productId);
+
+        res.status(201).json(updatedProduct);
+
+    } catch (err) {
+        await db.exec('ROLLBACK');
+        res.status(500).json({ message: 'Failed to place bid', error: err.message });
+    }
+});
+
+// POST Add Category (Admin Only)
+app.post('/api/categories', isAdmin, async (req, res) => {
+    const { name, imageUrl } = req.body;
+    if (!name) return res.status(400).json({ message: 'Name is required.' });
+    const id = `cat_${Date.now()}`;
+    try {
+        await db.run('INSERT INTO categories (id, name, imageUrl) VALUES (?, ?, ?)', id, name, imageUrl);
+        const newCategory = await db.get('SELECT * FROM categories WHERE id = ?', id);
+        res.status(201).json(newCategory);
+    } catch (err) {
+        if (err.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ message: `Category "${name}" already exists.` });
+        }
+        res.status(500).json({ message: 'Failed to add category', error: err.message });
+    }
+});
+
+// PUT Update Category (Admin Only)
+app.put('/api/categories/:id', isAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { newName, imageUrl } = req.body;
+    if (!newName) return res.status(400).json({ message: 'New name is required.' });
+
+    try {
+        const oldCategory = await db.get('SELECT name FROM categories WHERE id = ?', id);
+        if (!oldCategory) {
+            return res.status(404).json({ message: 'Category not found.' });
+        }
+
+        await db.exec('BEGIN TRANSACTION');
+        await db.run('UPDATE categories SET name = ?, imageUrl = ? WHERE id = ?', newName, imageUrl, id);
+        await db.run('UPDATE products SET category = ? WHERE category = ?', newName, oldCategory.name);
+        await db.exec('COMMIT');
+
+        const productsFromDb = await db.all('SELECT * FROM products ORDER BY createdAt DESC');
+        const products = productsFromDb.map(processDbProduct);
+        const categories = await db.all('SELECT * FROM categories ORDER BY name ASC');
+        res.json({ message: 'Category updated successfully', products, categories });
+
+    } catch (err) {
+        await db.exec('ROLLBACK');
+        if (err.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ message: `Category "${newName}" already exists.` });
+        }
+        res.status(500).json({ message: 'Failed to update category', error: err.message });
+    }
+});
+
+// DELETE Category (Admin Only)
+app.delete('/api/categories/:id', isAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const category = await db.get('SELECT name FROM categories WHERE id = ?', id);
+        if (!category) return res.status(404).json({ message: 'Category not found' });
+        
+        const productInUse = await db.get('SELECT 1 FROM products WHERE category = ? LIMIT 1', category.name);
+        if (productInUse) {
+            return res.status(400).json({ message: `Cannot delete category "${category.name}" as it is currently in use.`});
+        }
+
+        await db.run('DELETE FROM categories WHERE id = ?', id);
+        res.status(200).json({ message: 'Category deleted successfully' });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to delete category', error: err.message });
+    }
+});
+
+// POST Download Database Backup (Admin Only)
+app.post('/api/database/backup', isAdmin, (req, res) => {
+    try {
+        res.download(dbPath, 'database-backup.db', (err) => {
+            if (err) {
+                console.error("Error sending database backup:", err);
+                if (!res.headersSent) {
+                    res.status(500).send({ message: "Could not download the file." });
+                }
+            }
+        });
+    } catch (err) {
+        console.error("Error preparing database backup:", err);
+        if (!res.headersSent) {
+            res.status(500).json({ message: 'Failed to prepare database backup', error: err.message });
+        }
+    }
+});
+
+// GET Orders for user
+app.get('/api/orders/:userId', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const orders = await db.all('SELECT * FROM orders WHERE userId = ? ORDER BY date DESC', userId);
+        for (const order of orders) {
+            order.items = await getOrderItems(order.id);
+        }
+        res.json(orders);
+    } catch (err) => {
+        res.status(500).json({ message: 'Failed to fetch orders', error: err.message });
+    }
+});
+
+// GET a single order by ID
+app.get('/api/order/:orderId', async (req, res) => {
+    const { orderId } = req.params;
+    try {
+        const order = await db.get('SELECT * FROM orders WHERE id = ?', orderId);
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+        order.items = await getOrderItems(order.id);
+        
+        if (order.items && order.items.length > 0) {
+            const firstProductId = order.items[0].product.id;
+            const product = await db.get('SELECT sellerId FROM products WHERE id = ?', firstProductId);
+            if (product && product.sellerId) {
+                const sellerInfo = await db.get('SELECT telephone, bitQrUrl FROM users WHERE id = ?', product.sellerId);
+                if (sellerInfo) {
+                    order.sellerInfo = sellerInfo;
+                }
+            }
+        }
+        
+        res.json(order);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch order', error: err.message });
+    }
+});
+
+// Helper to get items for an order
+const getOrderItems = async (orderId) => {
+    const itemsFromDb = await db.all(`
+        SELECT oi.*, u.fullName as sellerName, u.email as sellerEmail
+        FROM order_items oi
+        LEFT JOIN users u ON u.id = oi.sellerId
+        WHERE oi.orderId = ?
+    `, orderId);
+    return itemsFromDb.map(item => ({
+        quantity: item.quantity,
+        product: {
+            id: item.productId,
+            name: item.name,
+            price: item.price,
+            imageUrls: [item.imageUrl],
+            sellerId: item.sellerId,
+            sellerName: item.sellerName || item.sellerEmail,
+            description: '',
+            category: '',
+            condition: 'New',
+            createdAt: 0,
+            listingType: 'Fixed Price',
+            startingPrice: 0,
+            currentBid: 0,
+            auctionEndDate: null,
+            isHidden: false,
+        }
+    }));
+};
+
+// Helper function to create an order
+const createOrder = async (orderData) => {
+    const { userId, cart, total, paymentMethod, status } = orderData;
+    const orderId = `order_${Date.now()}`;
+    const date = Date.now();
+    
+    await db.exec('BEGIN TRANSACTION');
+    try {
+        await db.run(
+            'INSERT INTO orders (id, userId, total, date, paymentMethod, status) VALUES (?, ?, ?, ?, ?, ?)',
+            orderId, userId, total, date, paymentMethod, status
+        );
+
+        const stmt = await db.prepare('INSERT INTO order_items (orderId, productId, sellerId, quantity, price, name, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        for (const item of cart) {
+            await stmt.run(orderId, item.product.id, item.product.sellerId, item.quantity, item.product.price, item.product.name, item.product.imageUrls[0]);
+        }
+        await stmt.finalize();
+
+        await db.exec('COMMIT');
+        
+        const newOrder = await db.get('SELECT * FROM orders WHERE id = ?', orderId);
+        newOrder.items = await getOrderItems(orderId);
+        return newOrder;
+    } catch(err) {
+        await db.exec('ROLLBACK');
+        throw err;
+    }
+};
+
+// POST Checkout (Card)
+app.post('/api/checkout', isAuthenticated, async (req, res) => {
+    try {
+        const newOrder = await createOrder({ ...req.body, paymentMethod: 'Card', status: 'Completed' });
+        res.status(201).json(newOrder);
+    } catch(err) {
+        res.status(500).json({ message: 'Failed to create order', error: err.message });
+    }
+});
+
+// POST Bit Checkout
+app.post('/api/bit-checkout', isAuthenticated, async (req, res) => {
+    try {
+        const newOrder = await createOrder({
+            ...req.body,
+            paymentMethod: 'Bit',
+            status: 'Pending Payment',
+        });
+        res.status(201).json(newOrder);
+    } catch(err) {
+        res.status(500).json({ message: 'Failed to create Bit order', error: err.message });
+    }
+});
+
+// Simulate Bit payment confirmation
+const confirmPendingPayments = async () => {
+    try {
+        const pendingOrders = await db.all("SELECT id FROM orders WHERE status = 'Pending Payment' AND paymentMethod = 'Bit'");
+        for (const order of pendingOrders) {
+            // Randomly confirm payment to simulate reality
+            if (Math.random() > 0.3) { 
+                console.log(`Confirming payment for pending Bit order ${order.id}...`);
+                await db.run("UPDATE orders SET status = 'Completed' WHERE id = ?", order.id);
+            } else {
+                console.log(`Payment for order ${order.id} still pending...`);
+            }
+        }
+    } catch (err) {
+        console.error("Error confirming pending payments:", err);
+    }
+};
+
+async function startServer() {
+    try {
+        db = await initializeDatabase();
+        app.listen(PORT, () => {
+            console.log(`Server running on http://localhost:${PORT}`);
+            // Simulate payment confirmation for any pending orders after a delay
+            setInterval(confirmPendingPayments, 15000); // Check every 15 seconds
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
 }
 
-export { initializeDatabase };
+startServer();

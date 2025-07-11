@@ -61,6 +61,34 @@ const isAdmin = async (req, res, next) => {
     }
 };
 
+const canManageProduct = async (req, res, next) => {
+    const { user } = req.body;
+    const { id: productId } = req.params;
+
+    if (!user || !user.id) {
+        return res.status(401).json({ message: 'Authentication required.' });
+    }
+    try {
+        const product = await db.get('SELECT sellerId FROM products WHERE id = ?', productId);
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found.' });
+        }
+        
+        const dbUser = await db.get('SELECT role FROM users WHERE id = ?', user.id);
+        if (!dbUser) {
+             return res.status(401).json({ message: 'User not found.' });
+        }
+
+        if (dbUser.role === 'admin' || product.sellerId === user.id) {
+            next();
+        } else {
+            res.status(403).json({ message: 'Forbidden: You do not have permission to manage this product.' });
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Server error during authorization', error: err.message });
+    }
+};
+
 // --- Logger Middleware ---
 app.use((req, res, next) => {
   const start = Date.now();
@@ -179,13 +207,14 @@ app.post('/api/products', isAuthenticated, async (req, res) => {
     }
 });
 
-// PUT Update Product (Admin only)
-app.put('/api/products/:id', isAdmin, async (req, res) => {
+// PUT Update Product (Admin or Seller)
+app.put('/api/products/:id', canManageProduct, async (req, res) => {
     const { id } = req.params;
     const { name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, listingType } = req.body;
     
     try {
-        const currentBid = listingType === 'Auction' ? (await db.get('SELECT currentBid FROM products WHERE id = ?', id)).currentBid : null;
+        const product = await db.get('SELECT currentBid FROM products WHERE id = ?', id);
+        const currentBid = listingType === 'Auction' ? (product.currentBid || startingPrice) : null;
         const [imageUrl1, imageUrl2, imageUrl3] = [...imageUrls, null, null, null];
 
         await db.run(
@@ -200,8 +229,8 @@ app.put('/api/products/:id', isAdmin, async (req, res) => {
     }
 });
 
-// DELETE Product (Admin only)
-app.delete('/api/products/:id', isAdmin, async (req, res) => {
+// DELETE Product (Admin or Seller)
+app.delete('/api/products/:id', canManageProduct, async (req, res) => {
     const { id } = req.params;
     try {
         const result = await db.run('DELETE FROM products WHERE id = ?', id);
@@ -214,8 +243,8 @@ app.delete('/api/products/:id', isAdmin, async (req, res) => {
     }
 });
 
-// PATCH Toggle Product Visibility (Admin only)
-app.patch('/api/products/:id/toggle-visibility', isAdmin, async (req, res) => {
+// PATCH Toggle Product Visibility (Admin or Seller)
+app.patch('/api/products/:id/toggle-visibility', canManageProduct, async (req, res) => {
     const { id } = req.params;
     try {
         await db.run('UPDATE products SET isHidden = 1 - isHidden WHERE id = ?', id);
@@ -236,6 +265,17 @@ app.post('/api/admin/products', isAdmin, async (req, res) => {
         res.json(productsFromDb.map(processDbProduct));
     } catch (err) {
         res.status(500).json({ message: 'Failed to fetch admin products', error: err.message });
+    }
+});
+
+// GET all products for a specific seller
+app.post('/api/my-products', isAuthenticated, async (req, res) => {
+    const { user } = req.body;
+    try {
+        const productsFromDb = await db.all('SELECT * FROM products WHERE sellerId = ? ORDER BY createdAt DESC', user.id);
+        res.json(productsFromDb.map(processDbProduct));
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch your products', error: err.message });
     }
 });
 
