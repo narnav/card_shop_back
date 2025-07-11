@@ -187,7 +187,7 @@ app.put('/api/user/profile', isAuthenticated, async (req, res) => {
 
 // POST Add Product
 app.post('/api/products', isAuthenticated, async (req, res) => {
-    const { listingType, name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, sellerId } = req.body;
+    const { listingType, name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, rarity, cardNumber, sellerId } = req.body;
     try {
         const id = `prod_${Date.now()}`;
         const createdAt = Date.now();
@@ -196,8 +196,8 @@ app.post('/api/products', isAuthenticated, async (req, res) => {
         const [imageUrl1, imageUrl2, imageUrl3] = imageUrls.map(url => url || null);
 
         await db.run(
-            'INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate, isHidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-            id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate
+            'INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, rarity, cardNumber, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate, isHidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+            id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, rarity, cardNumber, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate
         );
         const newProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
         const newProduct = processDbProduct(newProductFromDb);
@@ -210,7 +210,7 @@ app.post('/api/products', isAuthenticated, async (req, res) => {
 // PUT Update Product (Admin or Seller)
 app.put('/api/products/:id', canManageProduct, async (req, res) => {
     const { id } = req.params;
-    const { name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, listingType } = req.body;
+    const { name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, listingType, rarity, cardNumber } = req.body;
     
     try {
         const product = await db.get('SELECT currentBid FROM products WHERE id = ?', id);
@@ -218,8 +218,8 @@ app.put('/api/products/:id', canManageProduct, async (req, res) => {
         const [imageUrl1, imageUrl2, imageUrl3] = [...imageUrls, null, null, null];
 
         await db.run(
-            'UPDATE products SET name = ?, description = ?, price = ?, startingPrice = ?, auctionEndDate = ?, imageUrl1 = ?, imageUrl2 = ?, imageUrl3 = ?, category = ?, condition = ?, listingType = ?, currentBid = ? WHERE id = ?',
-            name, description, price, startingPrice, auctionEndDate, imageUrl1, imageUrl2, imageUrl3, category, condition, listingType, currentBid, id
+            'UPDATE products SET name = ?, description = ?, price = ?, startingPrice = ?, auctionEndDate = ?, imageUrl1 = ?, imageUrl2 = ?, imageUrl3 = ?, category = ?, condition = ?, listingType = ?, currentBid = ?, rarity = ?, cardNumber = ? WHERE id = ?',
+            name, description, price, startingPrice, auctionEndDate, imageUrl1, imageUrl2, imageUrl3, category, condition, listingType, currentBid, rarity, cardNumber, id
         );
         
         const updatedProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
@@ -478,9 +478,11 @@ const getOrderItems = async (orderId) => {
             imageUrls: [item.imageUrl],
             sellerId: item.sellerId,
             sellerName: item.sellerName || item.sellerEmail,
+            cardNumber: item.cardNumber,
             description: '',
             category: '',
             condition: 'New',
+            rarity: 'Common',
             createdAt: 0,
             listingType: 'Fixed Price',
             startingPrice: 0,
@@ -504,9 +506,9 @@ const createOrder = async (orderData) => {
             orderId, userId, total, date, paymentMethod, status
         );
 
-        const stmt = await db.prepare('INSERT INTO order_items (orderId, productId, sellerId, quantity, price, name, imageUrl) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        const stmt = await db.prepare('INSERT INTO order_items (orderId, productId, sellerId, quantity, price, name, imageUrl, cardNumber) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
         for (const item of cart) {
-            await stmt.run(orderId, item.product.id, item.product.sellerId, item.quantity, item.product.price, item.product.name, item.product.imageUrls[0]);
+            await stmt.run(orderId, item.product.id, item.product.sellerId, item.quantity, item.product.price, item.product.name, item.product.imageUrls[0], item.product.cardNumber);
         }
         await stmt.finalize();
 
