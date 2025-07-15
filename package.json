@@ -1,7 +1,8 @@
+
 {
-  "name": "shopsphere-server",
+  "name": "kardz-server",
   "version": "1.0.0",
-  "description": "Backend server for the ShopSphere e-commerce application.",
+  "description": "Backend server for the Kardz e-commerce application.",
   "main": "server.js",
   "type": "module",
   "scripts": {

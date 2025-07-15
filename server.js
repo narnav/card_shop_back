@@ -41,6 +41,7 @@ const isAuthenticated = async (req, res, next) => {
     if (!dbUser) {
         return res.status(401).json({ message: 'User not found.'});
     }
+    req.dbUser = dbUser;
     next();
 };
 
@@ -55,6 +56,21 @@ const isAdmin = async (req, res, next) => {
             next();
         } else {
             res.status(403).json({ message: 'Forbidden: Admin access required.' });
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Server error during authorization', error: err.message });
+    }
+};
+
+const isManager = async (req, res, next) => {
+    const { user } = req.body;
+    if (!user || !user.id) return res.status(401).json({ message: 'Authentication required.' });
+    try {
+        const dbUser = await db.get('SELECT role FROM users WHERE id = ?', user.id);
+        if (dbUser && (dbUser.role === 'admin' || dbUser.role === 'manager')) {
+            next();
+        } else {
+            res.status(403).json({ message: 'Forbidden: Manager or Admin access required.' });
         }
     } catch (err) {
         res.status(500).json({ message: 'Server error during authorization', error: err.message });
@@ -89,6 +105,27 @@ const canManageProduct = async (req, res, next) => {
     }
 };
 
+const canManageEvent = async (req, res, next) => {
+    const { user } = req.body;
+    const { eventId } = req.params;
+    if (!user || !user.id) return res.status(401).json({ message: 'Authentication required.' });
+    try {
+        const event = await db.get('SELECT organizerId FROM events WHERE id = ?', eventId);
+        if (!event) return res.status(404).json({ message: 'Event not found.' });
+        
+        const dbUser = await db.get('SELECT role FROM users WHERE id = ?', user.id);
+        if (!dbUser) return res.status(401).json({ message: 'User not found.' });
+
+        if (dbUser.role === 'admin' || event.organizerId === user.id) {
+            next();
+        } else {
+            res.status(403).json({ message: 'Forbidden: You do not have permission to manage this event.' });
+        }
+    } catch (err) {
+        res.status(500).json({ message: 'Server error during event authorization', error: err.message });
+    }
+};
+
 // --- Logger Middleware ---
 app.use((req, res, next) => {
   const start = Date.now();
@@ -118,7 +155,19 @@ app.get('/api/data', async (req, res) => {
         const productsFromDb = await db.all('SELECT * FROM products WHERE isHidden = 0 ORDER BY createdAt DESC');
         const products = productsFromDb.map(processDbProduct);
         const categories = await db.all('SELECT * FROM categories ORDER BY name ASC');
-        res.json({ products, categories });
+        const eventsFromDb = await db.all(`
+            SELECT e.*, u.fullName as organizerName 
+            FROM events e 
+            JOIN users u ON e.organizerId = u.id 
+            WHERE e.date >= ? ORDER BY e.date ASC
+        `, Date.now());
+
+        const events = await Promise.all(eventsFromDb.map(async (event) => {
+            const participants = await db.all('SELECT p.userId, u.email as userEmail FROM event_participants p JOIN users u ON u.id = p.userId WHERE p.eventId = ?', event.id);
+            return { ...event, participants };
+        }));
+
+        res.json({ products, categories, events });
     } catch (err) {
         res.status(500).json({ message: 'Failed to fetch initial data', error: err.message });
     }
@@ -151,15 +200,15 @@ app.post('/api/login', async (req, res) => {
     try {
         let user = await db.get('SELECT * FROM users WHERE email = ?', email);
         const isNewUser = !user;
-        const role = email === ADMIN_EMAIL ? 'admin' : 'user';
+        const role = email === ADMIN_EMAIL ? 'admin' : (user?.role || 'user');
         
         if (isNewUser) {
             const newUserId = `user_${Date.now()}`;
             await db.run('INSERT INTO users (id, email, role) VALUES (?, ?, ?)', newUserId, email, role);
             user = await db.get('SELECT * FROM users WHERE id = ?', newUserId);
-        } else if (user.role !== role) {
-            await db.run('UPDATE users SET role = ? WHERE id = ?', role, user.id);
-            user.role = role;
+        } else if (email === ADMIN_EMAIL && user.role !== 'admin') {
+            await db.run('UPDATE users SET role = ? WHERE id = ?', 'admin', user.id);
+            user.role = 'admin';
         }
         
         console.log(`Login attempt for email: "${email}", Role assigned: "${user.role}"`);
@@ -187,7 +236,7 @@ app.put('/api/user/profile', isAuthenticated, async (req, res) => {
 
 // POST Add Product
 app.post('/api/products', isAuthenticated, async (req, res) => {
-    const { listingType, name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, rarity, cardNumber, sellerId } = req.body;
+    const { listingType, name, description, price, amount, startingPrice, auctionEndDate, imageUrls, category, condition, rarity, cardNumber, sellerId } = req.body;
     try {
         const id = `prod_${Date.now()}`;
         const createdAt = Date.now();
@@ -196,8 +245,8 @@ app.post('/api/products', isAuthenticated, async (req, res) => {
         const [imageUrl1, imageUrl2, imageUrl3] = imageUrls.map(url => url || null);
 
         await db.run(
-            'INSERT INTO products (id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, rarity, cardNumber, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate, isHidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-            id, name, description, price, imageUrl1, imageUrl2, imageUrl3, category, condition, rarity, cardNumber, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate
+            'INSERT INTO products (id, name, description, price, amount, imageUrl1, imageUrl2, imageUrl3, category, condition, rarity, cardNumber, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate, isHidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+            id, name, description, price, amount, imageUrl1, imageUrl2, imageUrl3, category, condition, rarity, cardNumber, sellerId, createdAt, listingType, startingPrice, currentBid, auctionEndDate
         );
         const newProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
         const newProduct = processDbProduct(newProductFromDb);
@@ -210,7 +259,7 @@ app.post('/api/products', isAuthenticated, async (req, res) => {
 // PUT Update Product (Admin or Seller)
 app.put('/api/products/:id', canManageProduct, async (req, res) => {
     const { id } = req.params;
-    const { name, description, price, startingPrice, auctionEndDate, imageUrls, category, condition, listingType, rarity, cardNumber } = req.body;
+    const { name, description, price, amount, startingPrice, auctionEndDate, imageUrls, category, condition, listingType, rarity, cardNumber } = req.body;
     
     try {
         const product = await db.get('SELECT currentBid FROM products WHERE id = ?', id);
@@ -218,8 +267,8 @@ app.put('/api/products/:id', canManageProduct, async (req, res) => {
         const [imageUrl1, imageUrl2, imageUrl3] = [...imageUrls, null, null, null];
 
         await db.run(
-            'UPDATE products SET name = ?, description = ?, price = ?, startingPrice = ?, auctionEndDate = ?, imageUrl1 = ?, imageUrl2 = ?, imageUrl3 = ?, category = ?, condition = ?, listingType = ?, currentBid = ?, rarity = ?, cardNumber = ? WHERE id = ?',
-            name, description, price, startingPrice, auctionEndDate, imageUrl1, imageUrl2, imageUrl3, category, condition, listingType, currentBid, rarity, cardNumber, id
+            'UPDATE products SET name = ?, description = ?, price = ?, amount = ?, startingPrice = ?, auctionEndDate = ?, imageUrl1 = ?, imageUrl2 = ?, imageUrl3 = ?, category = ?, condition = ?, listingType = ?, currentBid = ?, rarity = ?, cardNumber = ? WHERE id = ?',
+            name, description, price, amount, startingPrice, auctionEndDate, imageUrl1, imageUrl2, imageUrl3, category, condition, listingType, currentBid, rarity, cardNumber, id
         );
         
         const updatedProductFromDb = await db.get('SELECT * FROM products WHERE id = ?', id);
@@ -305,7 +354,7 @@ app.post('/api/products/:productId/bid', isAuthenticated, async (req, res) => {
         }
         if (parseFloat(amount) <= product.currentBid) {
             await db.exec('ROLLBACK');
-            return res.status(400).json({ message: `Your bid must be higher than the current bid of $${product.currentBid.toFixed(2)}.` });
+            return res.status(400).json({ message: `Your bid must be higher than the current bid of ₪${product.currentBid.toFixed(2)}.` });
         }
         if (product.sellerId === user.id) {
             await db.exec('ROLLBACK');
@@ -429,7 +478,7 @@ app.get('/api/orders/:userId', async (req, res) => {
             order.items = await getOrderItems(order.id);
         }
         res.json(orders);
-    } catch (err)  {
+    } catch (err) {
         res.status(500).json({ message: 'Failed to fetch orders', error: err.message });
     }
 });
@@ -489,6 +538,7 @@ const getOrderItems = async (orderId) => {
             currentBid: 0,
             auctionEndDate: null,
             isHidden: false,
+            amount: 0, // Not relevant for past orders
         }
     }));
 };
@@ -501,6 +551,19 @@ const createOrder = async (orderData) => {
     
     await db.exec('BEGIN TRANSACTION');
     try {
+        // Stock check and update
+        for (const item of cart) {
+            const product = await db.get('SELECT amount, listingType FROM products WHERE id = ? FOR UPDATE', item.product.id);
+            if (product.listingType !== 'Auction') { // Only check for non-auction items
+                if (!product || product.amount < item.quantity) {
+                    // This error will be caught and sent to client.
+                    throw new Error(`Not enough stock for "${item.product.name}". Only ${product?.amount || 0} left.`);
+                }
+                const newAmount = product.amount - item.quantity;
+                await db.run('UPDATE products SET amount = ? WHERE id = ?', newAmount, item.product.id);
+            }
+        }
+
         await db.run(
             'INSERT INTO orders (id, userId, total, date, paymentMethod, status) VALUES (?, ?, ?, ?, ?, ?)',
             orderId, userId, total, date, paymentMethod, status
@@ -529,6 +592,9 @@ app.post('/api/checkout', isAuthenticated, async (req, res) => {
         const newOrder = await createOrder({ ...req.body, paymentMethod: 'Card', status: 'Completed' });
         res.status(201).json(newOrder);
     } catch(err) {
+        if (err.message.startsWith('Not enough stock')) {
+            return res.status(400).json({ message: err.message });
+        }
         res.status(500).json({ message: 'Failed to create order', error: err.message });
     }
 });
@@ -543,9 +609,159 @@ app.post('/api/bit-checkout', isAuthenticated, async (req, res) => {
         });
         res.status(201).json(newOrder);
     } catch(err) {
+         if (err.message.startsWith('Not enough stock')) {
+            return res.status(400).json({ message: err.message });
+        }
         res.status(500).json({ message: 'Failed to create Bit order', error: err.message });
     }
 });
+
+// User Management Endpoints (Admin)
+app.post('/api/admin/users', isAdmin, async (req, res) => {
+    try {
+        const users = await db.all('SELECT id, email, role, fullName FROM users');
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch users', error: err.message });
+    }
+});
+
+app.put('/api/admin/users/:userId/role', isAdmin, async (req, res) => {
+    const { userId } = req.params;
+    const { role } = req.body;
+    if (!['admin', 'manager', 'user'].includes(role)) {
+        return res.status(400).json({ message: 'Invalid role specified.' });
+    }
+    const adminUser = await db.get('SELECT email FROM users WHERE id = ?', userId);
+    if(adminUser && adminUser.email === ADMIN_EMAIL && role !== 'admin') {
+        return res.status(403).json({ message: 'Cannot change the role of the primary admin account.'});
+    }
+
+    try {
+        await db.run('UPDATE users SET role = ? WHERE id = ?', role, userId);
+        const updatedUser = await db.get('SELECT id, email, role, fullName FROM users WHERE id = ?', userId);
+        res.json(updatedUser);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update user role', error: err.message });
+    }
+});
+
+// Event Endpoints
+const getFullEvent = async (eventId) => {
+    const event = await db.get('SELECT e.*, u.fullName as organizerName FROM events e JOIN users u ON e.organizerId = u.id WHERE e.id = ?', eventId);
+    if (!event) return null;
+    event.participants = await db.all(`
+        SELECT p.userId, u.email as userEmail, u.fullName as userName, p.registeredAt 
+        FROM event_participants p 
+        JOIN users u ON p.userId = u.id 
+        WHERE p.eventId = ? 
+        ORDER BY p.registeredAt ASC
+    `, eventId);
+    return event;
+};
+
+app.get('/api/events/:eventId', async (req, res) => {
+    try {
+        const event = await getFullEvent(req.params.eventId);
+        if (!event) return res.status(404).json({ message: 'Event not found' });
+        res.json(event);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch event', error: err.message });
+    }
+});
+
+app.post('/api/events', isManager, async (req, res) => {
+    const { title, description, date, location, imageUrl, entryFee, maxParticipants, user } = req.body;
+    const id = `evt_${Date.now()}`;
+    try {
+        await db.run('INSERT INTO events (id, title, description, date, location, imageUrl, organizerId, entryFee, maxParticipants) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            id, title, description, date, location, imageUrl, user.id, entryFee, maxParticipants || null);
+        const newEvent = await getFullEvent(id);
+        res.status(201).json(newEvent);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to create event', error: err.message });
+    }
+});
+
+app.put('/api/events/:eventId', canManageEvent, async (req, res) => {
+    const { eventId } = req.params;
+    const { title, description, date, location, imageUrl, entryFee, maxParticipants } = req.body;
+    try {
+        await db.run('UPDATE events SET title = ?, description = ?, date = ?, location = ?, imageUrl = ?, entryFee = ?, maxParticipants = ? WHERE id = ?',
+            title, description, date, location, imageUrl, entryFee, maxParticipants || null, eventId);
+        const updatedEvent = await getFullEvent(eventId);
+        res.json(updatedEvent);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update event', error: err.message });
+    }
+});
+
+app.delete('/api/events/:eventId', canManageEvent, async (req, res) => {
+    const { eventId } = req.params;
+    try {
+        await db.run('DELETE FROM events WHERE id = ?', eventId);
+        res.status(200).json({ message: 'Event deleted successfully' });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to delete event', error: err.message });
+    }
+});
+
+app.post('/api/my-events', isManager, async (req, res) => {
+    const { user } = req.body;
+    try {
+        const eventsFromDb = await db.all('SELECT * FROM events WHERE organizerId = ? ORDER BY date DESC', user.id);
+        const events = await Promise.all(eventsFromDb.map(async (event) => {
+            const participants = await db.all('SELECT userId FROM event_participants WHERE eventId = ?', event.id);
+            return { ...event, participants };
+        }));
+        res.json(events);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch your events', error: err.message });
+    }
+});
+
+app.post('/api/events/:eventId/register', isAuthenticated, async (req, res) => {
+    const { eventId } = req.params;
+    const { user } = req.body;
+    try {
+        await db.exec('BEGIN TRANSACTION');
+        const event = await db.get('SELECT maxParticipants FROM events WHERE id = ?', eventId);
+        if (!event) {
+            await db.exec('ROLLBACK');
+            return res.status(404).json({ message: 'Event not found.' });
+        }
+        if (event.maxParticipants) {
+            const countResult = await db.get('SELECT COUNT(*) as count FROM event_participants WHERE eventId = ?', eventId);
+            if (countResult.count >= event.maxParticipants) {
+                await db.exec('ROLLBACK');
+                return res.status(400).json({ message: 'Event is already full.' });
+            }
+        }
+        await db.run('INSERT INTO event_participants (eventId, userId, registeredAt) VALUES (?, ?, ?)', eventId, user.id, Date.now());
+        await db.exec('COMMIT');
+        const updatedEvent = await getFullEvent(eventId);
+        res.json(updatedEvent);
+    } catch (err) {
+        await db.exec('ROLLBACK');
+        if (err.code === 'SQLITE_CONSTRAINT') {
+            return res.status(409).json({ message: 'You are already registered for this event.' });
+        }
+        res.status(500).json({ message: 'Failed to register for event', error: err.message });
+    }
+});
+
+app.delete('/api/events/:eventId/register', isAuthenticated, async (req, res) => {
+    const { eventId } = req.params;
+    const { user } = req.body;
+    try {
+        await db.run('DELETE FROM event_participants WHERE eventId = ? AND userId = ?', eventId, user.id);
+        const updatedEvent = await getFullEvent(eventId);
+        res.json(updatedEvent);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to unregister from event', error: err.message });
+    }
+});
+
 
 // Simulate Bit payment confirmation
 const confirmPendingPayments = async () => {
