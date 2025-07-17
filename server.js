@@ -7,7 +7,7 @@ import { initializeDatabase } from './database.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const ADMIN_EMAIL = 'admin@kardz.com';
+const ADMIN_EMAIL = 'admin@tcgisrael.com';
 
 const app = express();
 app.use(cors());
@@ -188,6 +188,22 @@ app.get('/api/product/:productId', async (req, res) => {
         res.json(product);
     } catch (err) {
         res.status(500).json({ message: 'Failed to fetch product details', error: err.message });
+    }
+});
+
+// GET Seller Profile with Products
+app.get('/api/seller/:sellerId', async (req, res) => {
+    const { sellerId } = req.params;
+    try {
+        const seller = await db.get('SELECT id, email, fullName, imageUrl FROM users WHERE id = ?', sellerId);
+        if (!seller) {
+            return res.status(404).json({ message: 'Seller not found' });
+        }
+        const productsFromDb = await db.all('SELECT * FROM products WHERE sellerId = ? AND isHidden = 0 ORDER BY createdAt DESC', sellerId);
+        const products = productsFromDb.map(processDbProduct);
+        res.json({ seller, products });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch seller profile', error: err.message });
     }
 });
 
@@ -553,11 +569,15 @@ const createOrder = async (orderData) => {
     try {
         // Stock check and update
         for (const item of cart) {
-            const product = await db.get('SELECT amount, listingType FROM products WHERE id = ? FOR UPDATE', item.product.id);
+            const product = await db.get('SELECT amount, listingType, name FROM products WHERE id = ?', item.product.id);
+
+            if (!product) {
+                throw new Error(`Product "${item.product.name}" is no longer available.`);
+            }
+
             if (product.listingType !== 'Auction') { // Only check for non-auction items
-                if (!product || product.amount < item.quantity) {
-                    // This error will be caught and sent to client.
-                    throw new Error(`Not enough stock for "${item.product.name}". Only ${product?.amount || 0} left.`);
+                if (product.amount < item.quantity) {
+                    throw new Error(`Not enough stock for "${product.name}". Only ${product.amount} left.`);
                 }
                 const newAmount = product.amount - item.quantity;
                 await db.run('UPDATE products SET amount = ? WHERE id = ?', newAmount, item.product.id);
@@ -592,7 +612,7 @@ app.post('/api/checkout', isAuthenticated, async (req, res) => {
         const newOrder = await createOrder({ ...req.body, paymentMethod: 'Card', status: 'Completed' });
         res.status(201).json(newOrder);
     } catch(err) {
-        if (err.message.startsWith('Not enough stock')) {
+        if (err.message.startsWith('Not enough stock') || err.message.includes('no longer available')) {
             return res.status(400).json({ message: err.message });
         }
         res.status(500).json({ message: 'Failed to create order', error: err.message });
@@ -609,7 +629,7 @@ app.post('/api/bit-checkout', isAuthenticated, async (req, res) => {
         });
         res.status(201).json(newOrder);
     } catch(err) {
-         if (err.message.startsWith('Not enough stock')) {
+         if (err.message.startsWith('Not enough stock') || err.message.includes('no longer available')) {
             return res.status(400).json({ message: err.message });
         }
         res.status(500).json({ message: 'Failed to create Bit order', error: err.message });
